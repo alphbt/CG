@@ -109,11 +109,12 @@ bool SceneIntersect(const Ray& ray, const std::vector<Sphere>& spheres, glm::vec
     {
         float d = -(ray.origin.y + 4) / ray.direction.y; // the checkerboard plane has equation y = -4
         glm::vec3 pt = ray.origin + ray.direction * d;
-        if (d > 0 && fabs(pt.x) < 10 && pt.z<-10 && pt.z>-30 && d < spheres_dist) {
+        if (d > 0 && fabs(pt.x) < 30 && pt.z<2 && pt.z>-30 && d < spheres_dist) {
             checkerboard_dist = d;
             hit = pt;
             normal = glm::vec3(0, 1, 0);
-            material.color = (int(.5 * hit.x + 1000) + int(.5 * hit.z)) & 1 ? glm::vec3(1, 1, 1) : glm::vec3(1, .7, .3);
+            material.color = (int(0.5f * hit.x + 1000) + int(0.5f * hit.z)) & 1 ? glm::vec3(1.0f, 1.0f, 1.0f) 
+                : glm::vec3(0.0f, 0.0f, 0.0f);
             material.color = material.color * 0.3f;
         }
     }
@@ -168,6 +169,9 @@ glm::vec3 Trace(const Ray& ray, Scene& scene, int depth = 0)
     {
         return kDefaultBackgroundColor;
     }
+
+    if (closetSphere.type == "lightSpere")
+        return material.color;
 
     float kr = 1;
     fresnel(ray.direction, normal, material.albedo[3], kr);
@@ -225,18 +229,32 @@ int main()
     Material rock(glm::vec3(0.5f, 0.48f, 0.48f), 10.0f,glm::vec4(0.9, 0.1, 0.0, 0.0), true);
     Material mirror(glm::vec3(0.84f, 0.61f, 0.61f), 125.0f, glm::vec4(0.0, 10.0, 0.8, 0.0));
     Material glass( glm::vec3(0.0f, 0.5f, 0.5f), 125.0f,glm::vec4(0.0, 0.5, 0.1, 0.8));
-    Material light(glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, glm::vec4(1.0f,0.0f,0.0f,0.0f));
+    Material light(glm::vec3(1.0f, 1.0f, 1.0f), 0.0f, glm::vec4(1.0f,0.0f,0.0f,0.0f));
 
     Scene mainScene;
     mainScene.spheres.push_back(Sphere(glm::vec3(-3, 0 ,-15), 2, glass));
     mainScene.spheres.push_back(Sphere(glm::vec3(-1.0f,-1.5f, -12), 2, rock));
     mainScene.spheres.push_back(Sphere(glm::vec3(1.5, -0.5, -18), 3, redRubber));
     mainScene.spheres.push_back(Sphere(glm::vec3(7, 5, -18), 4, mirror));
-    mainScene.spheres.push_back(Sphere(glm::vec3(-5.0f, 3.0f, -10.0f), 1, light,"lightSpere"));
+    mainScene.spheres.push_back(Sphere(glm::vec3(-5.0f, 7.0f, -10.0f),0.5f, light,"lightSpere"));
 
-    mainScene.lights.push_back(Light(glm::vec3(-20, 20, 20), 1.5f,"point"));
+    //mainScene.lights.push_back(Light(glm::vec3(-20, 20, 20), 1.5f,"point"));
     mainScene.lights.push_back(Light(glm::vec3(30, 50, -25),0.5f,"point"));
-    mainScene.lights.push_back(Light(glm::vec3(30, 20, 30), 0.6f,"point"));
+    mainScene.lights.push_back(Light(glm::vec3(30, 20, 30), 0.2f,"point"));
+
+    glm::vec3 center(-5.0f, 7.0f, -10.0f);
+
+    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12, sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12, sqrt(3) / 12,-sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12, sqrt(3) / 12,-sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12,sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12,-sqrt(3) / 12,-sqrt(3) / 12) + center , 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12,-sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12,-sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12,-sqrt(3) / 12,-sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(center, 0.1f, "point"));
+
+
     mainScene.lights.push_back(Light(glm::vec3(-10, 30, 30), 0.2f, "ambient"));
 
     render(mainScene);
