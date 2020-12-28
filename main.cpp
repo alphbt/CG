@@ -109,13 +109,15 @@ bool SceneIntersect(const Ray& ray, const std::vector<Sphere>& spheres, glm::vec
     {
         float d = -(ray.origin.y + 4) / ray.direction.y; // the checkerboard plane has equation y = -4
         glm::vec3 pt = ray.origin + ray.direction * d;
-        if (d > 0 && fabs(pt.x) < 30 && pt.z<2 && pt.z>-30 && d < spheres_dist) {
+        if (d > 0 && fabs(pt.x) < 30 && pt.z<2 && pt.z>-50 && d < spheres_dist) {
             checkerboard_dist = d;
             hit = pt;
             normal = glm::vec3(0, 1, 0);
             material.color = (int(0.5f * hit.x + 1000) + int(0.5f * hit.z)) & 1 ? glm::vec3(1.0f, 1.0f, 1.0f) 
-                : glm::vec3(0.0f, 0.0f, 0.0f);
+               : glm::vec3(0.39f, 0.11f, 0.79f);
+            //material.color = glm::vec3(0.39f, 0.11f, 0.79f);
             material.color = material.color * 0.3f;
+            material.albedo[2] = 0.1f;
         }
     }
 
@@ -139,13 +141,28 @@ void Lighting(const Scene& scene,glm::vec3& normal, glm::vec3& hitPoint,
                     glm::vec3 shadowOrig = glm::dot(lightDir, normal) < 0 ? hitPoint - normal * 1e-3f : hitPoint + normal * 1e-3f;
                     glm::vec3 shadowDir = glm::normalize(light.position - hitPoint);
                     glm::vec3 shadowPt, shadowN;
+                    glm::vec3 shadowPt1, shadowN1;
+                    glm::vec3 shadowPt2, shadowN2;
+                    glm::vec3 shadowPt3, shadowN3;
+                    glm::vec3 shadowPt4, shadowN4;
                     Material tmpMaterial;
                     Sphere tmpSphere;
 
                     auto sceneIntersect = SceneIntersect(Ray(shadowOrig, shadowDir),scene.spheres, shadowPt,
                         shadowN, tmpMaterial,tmpSphere);
+                    auto sceneIntersect1 = SceneIntersect(Ray(shadowOrig,glm::normalize(shadowDir + glm::vec3(0.01f))), scene.spheres, shadowPt1,
+                        shadowN1, tmpMaterial, tmpSphere);
+                    auto sceneIntersect2 = SceneIntersect(Ray(shadowOrig, glm::normalize(shadowDir - glm::vec3(0.01f))), scene.spheres, shadowPt2,
+                        shadowN2, tmpMaterial, tmpSphere);
+                    auto sceneIntersect3 = SceneIntersect(Ray(shadowOrig, glm::normalize(shadowDir + glm::vec3(0.02f))), scene.spheres, shadowPt3,
+                        shadowN3, tmpMaterial, tmpSphere);
+                    auto sceneIntersect4 = SceneIntersect(Ray(shadowOrig, glm::normalize(shadowDir - glm::vec3(0.02f))), scene.spheres, shadowPt4,
+                        shadowN4, tmpMaterial, tmpSphere);
 
-                    if (!sceneIntersect || tmpSphere.type == "lightSpere" || glm::length(shadowPt - shadowOrig) > lightDistance)
+                    auto intersect = sceneIntersect || sceneIntersect1 || sceneIntersect2 || sceneIntersect3 || sceneIntersect4;
+                    shadowPt = (shadowPt + shadowPt1 + shadowPt2 + shadowPt3 + shadowPt4) / 5.0f;
+
+                    if (!intersect || tmpSphere.type == "lightSpere" || glm::length(shadowPt - shadowOrig) > lightDistance)
                     {
                         float nl = glm::dot(normal, lightDir);
                         diffuse += std::max(0.0f, nl) * light.intensity;
@@ -165,21 +182,34 @@ glm::vec3 Trace(const Ray& ray, Scene& scene, int depth = 0)
     Material material;
     Sphere closetSphere;
 
-    if (depth > 4 || !SceneIntersect(ray, scene.spheres, point, normal, material,closetSphere))
+    if (depth > 3 || !SceneIntersect(ray, scene.spheres, point, normal, material, closetSphere))
     {
         return kDefaultBackgroundColor;
     }
 
     if (closetSphere.type == "lightSpere")
         return material.color;
+    
 
     float kr = 1;
     fresnel(ray.direction, normal, material.albedo[3], kr);
     bool outside = glm::dot(normal, ray.direction) < 0;
     
     glm::vec3 reflectDir = glm::normalize(-reflect(ray.direction, normal));
-    glm::vec3 reflectOrigin = glm::dot(reflectDir, normal) < 0 ? point - normal * 1e-2f : point + normal * 1e-2f;
-    glm::vec3 reflectedColor = Trace(Ray(reflectOrigin, reflectDir), scene, depth + 1);
+    glm::vec3 reflectDir1 = glm::normalize(-reflect(ray.direction,glm::normalize(normal + glm::vec3(0.01f))));
+    glm::vec3 reflectDir2 = glm::normalize(-reflect(ray.direction, glm::normalize(normal + glm::vec3(0.02f))));
+    glm::vec3 reflectDir3 = glm::normalize(-reflect(ray.direction, glm::normalize(normal - glm::vec3(0.01f))));
+    glm::vec3 reflectDir4 = glm::normalize(-reflect(ray.direction, glm::normalize(normal - glm::vec3(0.02f))));
+    glm::vec3 reflectDir5 = glm::normalize(-reflect(ray.direction, glm::normalize(normal + glm::vec3(0.001f))));
+    glm::vec3 reflectDir6 = glm::normalize(-reflect(ray.direction, glm::normalize(normal - glm::vec3(0.001f))));
+    glm::vec3 reflectOrigin = outside < 0 ? point - normal * 1e-2f : point + normal * 1e-2f;
+    glm::vec3 reflectedColor = (Trace(Ray(reflectOrigin, reflectDir), scene, depth + 1) +
+        Trace(Ray(reflectOrigin, reflectDir1), scene, depth + 1) +
+        Trace(Ray(reflectOrigin, reflectDir2), scene, depth + 1) +
+        Trace(Ray(reflectOrigin, reflectDir3), scene, depth + 1) +
+        Trace(Ray(reflectOrigin, reflectDir4), scene, depth + 1) +
+        Trace(Ray(reflectOrigin, reflectDir5), scene, depth + 1) +
+        Trace(Ray(reflectOrigin, reflectDir6), scene, depth + 1)) / 7.0f;
 
     float diffuse = 0, specular = 0, back = 0;
     Lighting(scene, normal, point, -ray.direction, material.specularExponent, diffuse, specular, back);
