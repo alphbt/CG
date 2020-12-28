@@ -5,17 +5,20 @@
 #include "Ray.h"
 #include "Material.h"
 #include <vector>
+#include <string>
 
 class Sphere
 {
 public:
-	Sphere(const glm::vec3& c, const float& r, const Material& m) : center(c), radius(r), material(m) {}
-	Sphere(const Sphere& sphere) : center(sphere.center), radius(sphere.radius), material(sphere.material) {}
+	Sphere() {}
+	Sphere(const glm::vec3& c, const float& r, const Material& m,const std::string t = "none") : center(c), radius(r), material(m),type(t) {}
+	Sphere(const Sphere& sphere) : center(sphere.center), radius(sphere.radius), material(sphere.material), type(sphere.type) {}
 	bool hit(const Ray& ray, float& tMin) const;
 
 	glm::vec3 center;
 	float radius;
 	Material material;
+	std::string type;
 	static const float eps;
 };
 

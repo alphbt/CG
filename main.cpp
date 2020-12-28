@@ -3,6 +3,8 @@
 #include "scene.h"
 #include "ray.h"
 #include "material.h"
+#include <algorithm>
+#include <iostream>
 #include "image.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stbi_image.h"
@@ -23,10 +25,10 @@ Image bark(barkImage, x, y);
 
 glm::vec3 reflect(const glm::vec3& I, const glm::vec3& N)
 {
-    return  N * glm::dot(N, I) * 2.0f - I;
+    return N * glm::dot(N, I) * 2.0f - I;
 }
 
-glm::vec3 Refract(const glm::vec3& I, glm::vec3& N, float& refractiveIndex)
+glm::vec3 refract(glm::vec3& I, glm::vec3& N, float& refractiveIndex)
 {
     float cosi = glm::clamp(-1.0f, 1.0f, glm::dot(I, N));
     float etai = 1, etat = refractiveIndex;
@@ -43,7 +45,33 @@ glm::vec3 Refract(const glm::vec3& I, glm::vec3& N, float& refractiveIndex)
     return k < 0 ? glm::vec3(0.0f, 0.0f, 0.0f) : eta * I + (eta * cosi - sqrtf(k)) * n;
 }
 
-static void getSphereTextureCoordinats(const glm::vec3& p, float& u, float& v) {
+void fresnel(const glm::vec3& I, const glm::vec3& N, const float& ior, float& kr)
+{
+    float cosi = glm::clamp(-1.0f, 1.0f, glm::dot(I, N));
+    float etai = 1, etat = ior;
+
+    if (cosi > 0)
+    {
+        std::swap(etai, etat);
+    }
+
+    float sint = etai / etat * sqrtf(std::max(0.f, 1 - cosi * cosi));
+
+    if (sint >= 1) 
+    {
+        kr = 1;
+    }
+    else
+    {
+        float cost = sqrtf(std::max(0.f, 1 - sint * sint));
+        cosi = fabsf(cosi);
+        float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
+        float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
+        kr = (Rs * Rs + Rp * Rp) / 2;
+    }
+}
+
+void getSphereTextureCoordinats(const glm::vec3& p, float& u, float& v) {
     float r = std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
     float phi = std::atan2(-p.z,p.x);
     u = (phi + glm::pi<float>()) / (2 * glm::pi<float>());
@@ -52,7 +80,7 @@ static void getSphereTextureCoordinats(const glm::vec3& p, float& u, float& v) {
 }
 
 bool SceneIntersect(const Ray& ray, const std::vector<Sphere>& spheres, glm::vec3& hit,
-    glm::vec3& normal, Material& material)
+    glm::vec3& normal, Material& material,Sphere& sphere)
 {
     float spheres_dist = kInfinity;
     for (int i = 0; i < spheres.size(); i++)
@@ -72,6 +100,7 @@ bool SceneIntersect(const Ray& ray, const std::vector<Sphere>& spheres, glm::vec
                 material.color = bark.value(u,v) ;
             }  
             normal = glm::normalize(normal);
+            sphere = spheres[i];
         }
     }
 
@@ -92,68 +121,75 @@ bool SceneIntersect(const Ray& ray, const std::vector<Sphere>& spheres, glm::vec
     return std::min(spheres_dist, checkerboard_dist) < 1000;
 }
 
-glm::vec3 CastRay(const Ray& ray, Scene& scene, int depth = 0)
+void Lighting(const Scene& scene,glm::vec3& normal, glm::vec3& hitPoint,
+    const glm::vec3& v,float& specularExp,float& diffuse, float& specular, float& back)
+{
+    std::for_each(scene.lights.begin(),scene.lights.end(), [&](auto& light)
+        {
+            if (light.type == "ambient")
+                back += light.intensity;
+            else
+            {
+                if (light.type == "point")
+                {
+                    glm::vec3 lightDir = glm::normalize(light.position - hitPoint);
+                    float lightDistance = glm::length(light.position - hitPoint);
+                    
+                    glm::vec3 shadowOrig = glm::dot(lightDir, normal) < 0 ? hitPoint - normal * 1e-3f : hitPoint + normal * 1e-3f;
+                    glm::vec3 shadowDir = glm::normalize(light.position - hitPoint);
+                    glm::vec3 shadowPt, shadowN;
+                    Material tmpMaterial;
+                    Sphere tmpSphere;
+
+                    auto sceneIntersect = SceneIntersect(Ray(shadowOrig, shadowDir),scene.spheres, shadowPt,
+                        shadowN, tmpMaterial,tmpSphere);
+
+                    if (!sceneIntersect || tmpSphere.type == "lightSpere" || glm::length(shadowPt - shadowOrig) > lightDistance)
+                    {
+                        float nl = glm::dot(normal, lightDir);
+                        diffuse += std::max(0.0f, nl) * light.intensity;
+
+                        glm::vec3 r = glm::normalize(reflect(lightDir, normal));
+                        float rv = glm::dot(v, r);
+                        specular += light.intensity * glm::pow(std::max(0.0f, rv), specularExp);
+                    }
+                }
+            }
+        });
+}
+
+glm::vec3 Trace(const Ray& ray, Scene& scene, int depth = 0)
 {
     glm::vec3 point, normal;
     Material material;
+    Sphere closetSphere;
 
-    if (depth > 4 || !SceneIntersect(ray, scene.spheres, point, normal, material))
+    if (depth > 4 || !SceneIntersect(ray, scene.spheres, point, normal, material,closetSphere))
     {
         return kDefaultBackgroundColor;
     }
 
-    glm::vec3 reflectDir = glm::normalize(reflect(ray.direction, normal));
-    glm::vec3 reflectOrig = glm::dot(reflectDir, normal) < 0 ? point - normal * 1e-3f : point + normal * 1e-3f;
-    glm::vec3 reflectColor = CastRay(Ray(reflectOrig, reflectDir), scene, depth + 1);
+    float kr = 1;
+    fresnel(ray.direction, normal, material.albedo[3], kr);
+    bool outside = glm::dot(normal, ray.direction) < 0;
+    
+    glm::vec3 reflectDir = glm::normalize(-reflect(ray.direction, normal));
+    glm::vec3 reflectOrigin = glm::dot(reflectDir, normal) < 0 ? point - normal * 1e-2f : point + normal * 1e-2f;
+    glm::vec3 reflectedColor = Trace(Ray(reflectOrigin, reflectDir), scene, depth + 1);
 
-    float diffuseLightIntensity = 0;
-    float specularLightIntensity = 0;
-    glm::vec3 v = glm::normalize(ray.origin - point);
-
-    for (size_t i = 0; i < scene.lights.size(); i++)
-    {
-        glm::vec3 lightDir = glm::normalize(scene.lights[i].position - point);
-        float lightDistance = glm::length(scene.lights[i].position - point);
-        glm::vec3 h = glm::normalize(v + lightDir);
-
-        glm::vec3 shadowOrig = glm::dot(lightDir, normal) < 0 ? point - normal * 1e-3f : point + normal * 1e-3f;
-        glm::vec3 shadowDir = glm::normalize(scene.lights[i].position - point);
-        glm::vec3 shadow_pt, shadow_N;
-        Material tmpmaterial;
-
-        auto sceneIntersect = SceneIntersect(Ray(shadowOrig, shadowDir), scene.spheres, shadow_pt,
-            shadow_N, tmpmaterial);
-
-        if (sceneIntersect && glm::length(shadow_pt - shadowOrig) < lightDistance)
-           continue; 
-
-        float nh = glm::dot(normal, h);
-        float m = 1.0f;
-        float nv = glm::dot(normal, v);
-        float nl = glm::dot(normal, lightDir);
-        float d = glm::pow(glm::e<float>(), -(1 - nh * nh) / (m * m * nh * nh)) / (m * m * glm::pow(nh, 4.0f));
-        float f = glm::mix(pow(1.0 - nv, 5.0), 1.0, material.refractiveIndex);
-        float k = 2 * nh / glm::dot(h, v);
-        float g = std::min(1.0f, std::min(k * nv, k * nl));
-        float ct = d * f * g / (glm::pi<float>() * nv * nl);
-
-        diffuseLightIntensity += scene.lights[i].intensity * std::max(0.0f, nl);
-        specularLightIntensity += scene.lights[i].intensity  * std::max(0.0f, ct);// *
-           // glm::pow(std::max(0.0f, glm::dot(h, normal)), material.specularExponent);
-
-    }
-
-    glm::vec3 returnColor = material.color * diffuseLightIntensity + glm::vec3(1.0f, 1.0f, 1.0f) * specularLightIntensity * 0.3f +
-        + reflectColor * (float)material.isReflect + material.color * 0.2f;
-    returnColor.r = std::min(1.0f, returnColor.r);
-    returnColor.g = std::min(1.0f, returnColor.g);
-    returnColor.b = std::min(1.0f, returnColor.b);
-    return returnColor;
+    float diffuse = 0, specular = 0, back = 0;
+    Lighting(scene, normal, point, -ray.direction, material.specularExponent, diffuse, specular, back);
+    
+    glm::vec3 returnedColor =  material.color * back + material.color * diffuse * material.albedo[0] +
+        glm::vec3(1.0f,1.0f,1.0f) * specular * material.albedo[1] + reflectedColor * material.albedo[2];
+    returnedColor.r = std::min(1.0f, returnedColor.r);
+    returnedColor.g = std::min(1.0f, returnedColor.g);
+    returnedColor.b = std::min(1.0f, returnedColor.b);
+    return returnedColor;
 }
 
 void render(Scene& scene)
 {
-    static int countOfRender = 1;
     const int width = 4000;
     const int height = 2000;
     constexpr auto fov = glm::pi<float>() / 2;
@@ -166,7 +202,7 @@ void render(Scene& scene)
             float Px = (2 * (i + 0.5f) / (float)width - 1) * std::tanf(fov / 2.0f) * imageAspectRatio;
             float Py = (1 - 2 * (j + 0.5) / (float)height) * std::tanf(fov / 2.0f);
             glm::vec3 rayDirection = glm::normalize(glm::vec3(Px, Py, -1));
-            framebuffer[i + j * width] = CastRay(Ray(glm::vec3(0, 0, 0), rayDirection), scene);
+            framebuffer[i + j * width] = Trace(Ray(glm::vec3(0, 0, 0), rayDirection), scene);
         }
     }
 
@@ -184,21 +220,24 @@ void render(Scene& scene)
 
 int main()
 {
-    Material ivory(glm::vec3(0.4f, 0.4f, 0.3f), 50.0f, 1.0f);
-    Material redRubber( glm::vec3(0.3f, 0.1f, 0.1f), 10.0f, 1.0f);
-    Material rock(glm::vec3(0.5f, 0.48f, 0.48f), 10.0f, 1.0f, true);
-    Material mirror(glm::vec3(1.0f, 1.0f, 1.0f), 142.0f, 1.0f,false,true);
-    Material glass( glm::vec3(0.0f, 0.5f, 0.5f), 125.0f, 1.333f);
+    Material ivory(glm::vec3(0.4f, 0.4f, 0.3f), 50.0f,glm::vec4(0.6, 0.3, 0.1, 0.0));
+    Material redRubber(glm::vec3(0.3f, 0.1f, 0.1f), 10.0f, glm::vec4(0.9, 0.1, 0.0, 0.0));
+    Material rock(glm::vec3(0.5f, 0.48f, 0.48f), 10.0f,glm::vec4(0.9, 0.1, 0.0, 0.0), true);
+    Material mirror(glm::vec3(0.84f, 0.61f, 0.61f), 125.0f, glm::vec4(0.0, 10.0, 0.8, 0.0));
+    Material glass( glm::vec3(0.0f, 0.5f, 0.5f), 125.0f,glm::vec4(0.0, 0.5, 0.1, 0.8));
+    Material light(glm::vec3(1.0f, 1.0f, 1.0f), 1.0f, glm::vec4(1.0f,0.0f,0.0f,0.0f));
 
     Scene mainScene;
-    mainScene.spheres.push_back(Sphere(glm::vec3(-3, 0 ,-15), 2, ivory));
-    mainScene.spheres.push_back(Sphere(glm::vec3(-1.0f,-1.5f, -12), 2, mirror));
+    mainScene.spheres.push_back(Sphere(glm::vec3(-3, 0 ,-15), 2, glass));
+    mainScene.spheres.push_back(Sphere(glm::vec3(-1.0f,-1.5f, -12), 2, rock));
     mainScene.spheres.push_back(Sphere(glm::vec3(1.5, -0.5, -18), 3, redRubber));
-    mainScene.spheres.push_back(Sphere(glm::vec3(7, 5, -18), 4, rock));
+    mainScene.spheres.push_back(Sphere(glm::vec3(7, 5, -18), 4, mirror));
+    mainScene.spheres.push_back(Sphere(glm::vec3(-5.0f, 3.0f, -10.0f), 1, light,"lightSpere"));
 
-    mainScene.lights.push_back(Light(glm::vec3(-20, 20, 20), 1.5));
-   // mainScene.lights.push_back(Light(glm::vec3(30, 50, -25), 1.8));
-   // mainScene.lights.push_back(Light(glm::vec3(30, 20, 30), 1.7));
+    mainScene.lights.push_back(Light(glm::vec3(-20, 20, 20), 1.5f,"point"));
+    mainScene.lights.push_back(Light(glm::vec3(30, 50, -25),0.5f,"point"));
+    mainScene.lights.push_back(Light(glm::vec3(30, 20, 30), 0.6f,"point"));
+    mainScene.lights.push_back(Light(glm::vec3(-10, 30, 30), 0.2f, "ambient"));
 
     render(mainScene);
 }

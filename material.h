@@ -8,9 +8,9 @@ class Material
 {
 public:
 
-    Material(const glm::vec3& c, const float& spec, const float& i,bool m = false, bool r = false) : color(c), specularExponent(spec), refractiveIndex(i), 
-        isBump(m), isReflect(r) {}
-    Material() : refractiveIndex(1), color(), specularExponent(0), isBump(false),isReflect(false) {}
+    Material(const glm::vec3& c, const float& spec,const glm::vec4& a,bool m = false) : color(c), specularExponent(spec), 
+        albedo(a),isBump(m) {}
+    Material() : color(), specularExponent(0), isBump(false),albedo(1,0,0,1) {}
     Material(const Material& material)
     {
         copy(material);
@@ -19,16 +19,15 @@ public:
     void copy(const Material& m)
     {
         color = m.color;
-        refractiveIndex = m.refractiveIndex;
         specularExponent = m.specularExponent;
         isBump = m.isBump;
+        albedo = m.albedo;
     }
 
-    float refractiveIndex;
+    glm::vec4 albedo;
     glm::vec3 color;
     float specularExponent;
     bool isBump;
-    bool isReflect;
 
 };
 
