@@ -12,6 +12,7 @@ class Image
 public:
 	Image() {}
 	Image(unsigned char* pixels, int A, int B) : nx(A), ny(B), data(pixels) {}
+	Image(const Image& i) : nx(i.nx), ny(i.ny), data(i.data){}
 
 	glm::vec3 value(float u, float v) const;
 	

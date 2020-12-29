@@ -16,13 +16,7 @@
 
 static const float kInfinity = std::numeric_limits<float>::max();
 static const glm::vec3 kDefaultBackgroundColor = glm::vec3(0.235294, 0.67451, 0.843137);
-int x = 1270;
-int y = 770;
-int n = 3;
-unsigned char* barknmpImage = stbi_load("Bark_NRM.jpg", &x, &y, &n, 0);
-Image barkNMP(barknmpImage, x, y);
-unsigned char* barkImage = stbi_load("Bark.jpg", &x, &y, &n, 0);
-Image bark(barkImage, x, y);
+
 
 glm::vec3 reflect(const glm::vec3& I, const glm::vec3& N)
 {
@@ -54,8 +48,8 @@ bool SceneIntersect(const Ray& ray, const std::vector<Sphere>& spheres, glm::vec
             {
                 float u, v;
                 getSphereTextureCoordinats(normal, u, v);
-                normal = barkNMP.value(u, v);
-                material.color = bark.value(u,v) ;
+                normal = material.normalMap.value(u, v);
+                material.color = material.image.value(u,v) ;
             }  
             normal = glm::normalize(normal);
             sphere = spheres[i];
@@ -222,9 +216,33 @@ void render(Scene& scene)
 
 int main()
 {
+    int x = 1270;
+    int y = 770;
+    int n = 3;
+    unsigned char* barknmpImage = stbi_load("Bark_NRM.jpg", &x, &y, &n, 0);
+    Image barkNMP(barknmpImage, x, y);
+    unsigned char* barkImage = stbi_load("Bark.jpg", &x, &y, &n, 0);
+    Image bark(barkImage, x, y);
+
+    x = 500;
+    y = 500;
+    unsigned char* wallNMPImage = stbi_load("wallNMP.jpg", &x, &y, &n, 0);
+    Image wallNMP(wallNMPImage, x, y);
+    unsigned char* wallImage = stbi_load("wall.jpg", &x, &y, &n, 0);
+    Image wall(wallImage, x, y);
+
+    x = 512;
+    y = 340;
+    unsigned char* foilNMPImage = stbi_load("foilNMP.jpg", &x, &y, &n, 0);
+    Image foilNMP(foilNMPImage, x, y);
+    unsigned char* foilImage = stbi_load("foil.jpg", &x, &y, &n, 0);
+    Image foil(foilImage, x, y);
+
     Material ivory(glm::vec3(0.4f, 0.4f, 0.3f), 50.0f,glm::vec4(0.6, 0.3, 0.1, 0.0));
     Material redRubber(glm::vec3(0.3f, 0.1f, 0.1f), 10.0f, glm::vec4(0.9, 0.1, 0.0, 0.0));
-    Material rock(glm::vec3(0.5f, 0.48f, 0.48f), 10.0f,glm::vec4(0.9, 0.1, 0.0, 0.0), true);
+    Material rock(glm::vec3(0.5f, 0.48f, 0.48f), 10.0f,glm::vec4(0.9, 0.1, 0.0, 0.0), true, barkNMP,bark);
+    Material wallM(glm::vec3(1.0f, 0.0f, 0.0f), 15.0f, glm::vec4(0.9, 0.1, 0.0, 0.0), true, wallNMP, wall);
+    Material foilM(glm::vec3(0.0, 0.0, 0.0), 10.0f, glm::vec4(0.9, 0.4, 0.0, 0.0), true, foilNMP, foil);
     Material mirror(glm::vec3(0.84f, 0.3f, 0.61f), 125.0f, glm::vec4(0.0, 0.9, 0.8, 0.0));
     Material light(glm::vec3(0.9f, 0.9f, 0.9f), 0.0f, glm::vec4(1.0f,0.0f,0.0f,0.0f));
 
@@ -234,23 +252,23 @@ int main()
     mainScene.spheres.push_back(Sphere(glm::vec3(1.5, -0.5, -18), 3, redRubber));
     mainScene.spheres.push_back(Sphere(glm::vec3(7, 5, -18), 4, mirror));
     mainScene.spheres.push_back(Sphere(glm::vec3(-5.0f, 7.0f, -10.0f),0.5f, light,"lightSpere"));
+    mainScene.spheres.push_back(Sphere(glm::vec3(-9.0, 0.0, -13.0f), 2, wallM));
+    mainScene.spheres.push_back(Sphere(glm::vec3(8.0, 0.0, -10), 2.0f, foilM));
 
-    //mainScene.lights.push_back(Light(glm::vec3(-20, 20, 20), 1.5f,"point"));
     mainScene.lights.push_back(Light(glm::vec3(30, 50, -25),0.7f,"point"));
     mainScene.lights.push_back(Light(glm::vec3(30, 20, 30), 0.3f,"point"));
 
     glm::vec3 center(-5.0f, 7.0f, -10.0f);
 
     mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12, sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
-    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12, sqrt(3) / 12,-sqrt(3) / 12) + center, 0.1f, "point"));
-    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12, sqrt(3) / 12,-sqrt(3) / 12) + center, 0.1f, "point"));
-    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12,sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
-    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12,-sqrt(3) / 12,-sqrt(3) / 12) + center , 0.1f, "point"));
-    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12,-sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
-    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12,-sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
-    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12,-sqrt(3) / 12,-sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12, sqrt(3) / 12, -sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12, sqrt(3) / 12, -sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12, sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12, -sqrt(3) / 12, -sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(-sqrt(3) / 12, -sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12, -sqrt(3) / 12, sqrt(3) / 12) + center, 0.1f, "point"));
+    mainScene.lights.push_back(Light(glm::vec3(sqrt(3) / 12, -sqrt(3) / 12, -sqrt(3) / 12) + center, 0.1f, "point"));
     mainScene.lights.push_back(Light(center, 0.1f, "point"));
-
 
     mainScene.lights.push_back(Light(glm::vec3(-10, 30, 30), 0.2f, "ambient"));
 
