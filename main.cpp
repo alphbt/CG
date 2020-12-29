@@ -73,7 +73,6 @@ bool SceneIntersect(const Ray& ray, const std::vector<Sphere>& spheres, glm::vec
             normal = glm::vec3(0, 1, 0);
             material.color = (int(0.5f * hit.x + 1000) + int(0.5f * hit.z)) & 1 ? glm::vec3(1.0f, 1.0f, 1.0f) 
                : glm::vec3(0.39f, 0.11f, 0.79f);
-            //material.color = glm::vec3(0.39f, 0.11f, 0.79f);
             material.color = material.color * 0.3f;
             material.albedo[2] = 0.1f;
         }
